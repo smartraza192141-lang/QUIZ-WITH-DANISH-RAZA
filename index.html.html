@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bihar Police Operator Quiz - Live</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --primary: #1a73e8;
+            --success: #28a745;
+            --danger: #dc3545;
+            --bg: #f0f2f5;
+        }
+
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); margin: 0; padding: 20px; }
+
+        /* A4 Page Design */
+        .a4-container {
+            width: 210mm; min-height: 297mm; padding: 20mm; margin: auto;
+            background: white; box-shadow: 0 0 15px rgba(0,0,0,0.2);
+            position: relative; border-radius: 8px; box-sizing: border-box;
+        }
+
+        .header { text-align: center; border-bottom: 3px solid var(--primary); margin-bottom: 30px; padding-bottom: 10px; }
+        .header h1 { color: var(--primary); margin: 0; text-transform: uppercase; font-size: 24px; }
+
+        .download-btn { position: absolute; top: 20px; right: 20px; background: var(--success); color: white; border: none; padding: 10px 15px; border-radius: 5px; cursor: pointer; font-weight: bold; }
+
+        .question-item { margin-bottom: 25px; page-break-inside: avoid; border-bottom: 1px solid #f1f1f1; padding-bottom: 15px; }
+        .q-text { font-weight: bold; font-size: 18px; display: block; margin-bottom: 12px; color: #333; }
+
+        .options-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .option { padding: 12px; border: 2px solid #ddd; border-radius: 8px; cursor: pointer; transition: 0.3s; background: #fff; font-size: 16px; }
+
+        /* Color Effects */
+        .correct { background: #d4edda !important; border-color: var(--success) !important; color: #155724; font-weight: bold; }
+        .wrong { background: #f8d7da !important; border-color: var(--danger) !important; color: #721c24; }
+        .disabled { pointer-events: none; }
+
+        .controls { text-align: center; margin-top: 30px; display: flex; justify-content: center; gap: 15px; }
+        .btn { padding: 12px 30px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 16px; }
+        .res-btn { background: var(--primary); color: white; }
+        .restart-btn { background: #6c757d; color: white; }
+
+        #result-section { display: none; text-align: center; margin-top: 40px; border-top: 2px solid #eee; padding-top: 30px; }
+        .chart-wrap { width: 280px; margin: 20px auto; }
+
+        /* Loader */
+        #loader { text-align: center; font-size: 20px; padding: 50px; }
+
+        @media print { .download-btn, .controls { display: none; } .a4-container { box-shadow: none; margin: 0; width: 100%; } }
+    </style>
+</head>
+<body>
+
+<div class="a4-container">
+    <button class="download-btn" onclick="window.print()">Download/Print PDF</button>
+
+    <div class="header">
+        <h1>DANISH RAZA QUIZ AREA</h1>
+        <p>BIHAR POLICE OPERATOR - LIVE TEST SERIES</p>
+    </div>
+
+    <div id="loader">Google Sheet se data load ho raha hai...</div>
+    <div id="quiz-box"></div>
+
+    <div class="controls" id="control-btns" style="display:none;">
+        <button class="btn res-btn" onclick="calculateResult()">Final Result Dekhein</button>
+        <button class="btn restart-btn" onclick="location.reload()">Reset/Restart</button>
+    </div>
+
+    <div id="result-section">
+        <h2>Aapka Score: <span id="score-text">0</span> / <span id="total-text">0</span></h2>
+        <div class="chart-wrap"><canvas id="scoreChart"></canvas></div>
+    </div>
+</div>
+
+<script>
+    // ⬇️ YAHAN APNI GOOGLE SHEET KI CSV LINK PASTE KAREIN ⬇️
+    const csvUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSpe1VctIKGz4UOhR_6JH6bt34QA5anDLMr2EmtOLtHvZ-kQvTcs--rpEg8HNBvIpKNEoQR-qM2qgp2/pub?output=csv"; 
+
+    let quizData = [];
+    let userScore = 0;
+
+    // Google Sheet se data khichne ka function
+    async function getSheetData() {
+        try {
+            const response = await fetch(csvUrl);
+            const csvText = await response.text();
+            const rows = csvText.split('\n').slice(1); // Header row hata di
+
+            quizData = rows.map(row => {
+                const cols = row.split(',');
+                if(cols.length >= 6) {
+                    return {
+                        q: cols[0].trim(),
+                        options: [cols[1].trim(), cols[2].trim(), cols[3].trim(), cols[4].trim()],
+                        a: parseInt(cols[5].trim())
+                    };
+                }
+            }).filter(item => item !== undefined);
+
+            renderQuestions();
+        } catch (error) {
+            document.getElementById('loader').innerHTML = "❌ Error: CSV Link check karein ya Sheet ko Publish karein!";
+        }
+    }
+
+    // Questions ko screen par dikhane ka function
+    function renderQuestions() {
+        document.getElementById('loader').style.display = 'none';
+        document.getElementById('control-btns').style.display = 'flex';
+        const box = document.getElementById('quiz-box');
+        
+        quizData.forEach((item, qIdx) => {
+            const qDiv = document.createElement('div');
+            qDiv.className = 'question-item';
+            qDiv.innerHTML = `
+                <span class="q-text">Q${qIdx + 1}. ${item.q}</span>
+                <div class="options-grid" id="grid-${qIdx}">
+                    ${item.options.map((opt, oIdx) => `
+                        <div class="option" onclick="checkAnswer(this, ${qIdx}, ${oIdx})">${opt}</div>
+                    `).join('')}
+                </div>
+            `;
+            box.appendChild(qDiv);
+        });
+    }
+
+    // Answer check karne ka function
+    function checkAnswer(el, qIdx, selectedIdx) {
+        const correctIdx = quizData[qIdx].a;
+        const grid = document.getElementById(`grid-${qIdx}`);
+        const allOptions = grid.children;
+
+        if (selectedIdx === correctIdx) {
+            el.classList.add('correct');
+            userScore++;
+        } else {
+            el.classList.add('wrong');
+            allOptions[correctIdx].classList.add('correct');
+        }
+
+        // Lock options after click
+        for (let opt of allOptions) opt.classList.add('disabled');
+    }
+
+    // Result aur Graph dikhane ka function
+    function calculateResult() {
+        document.getElementById('score-text').innerText = userScore;
+        document.getElementById('total-text').innerText = quizData.length;
+        document.getElementById('result-section').style.display = 'block';
+
+        const ctx = document.getElementById('scoreChart').getContext('2d');
+        new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Sahi', 'Galat'],
+                datasets: [{
+                    data: [userScore, quizData.length - userScore],
+                    backgroundColor: ['#28a745', '#dc3545']
+                }]
+            }
+        });
+        window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+    }
+
+    // Start loading
+    window.onload = getSheetData;
+</script>
+
+</body>
+</html>
